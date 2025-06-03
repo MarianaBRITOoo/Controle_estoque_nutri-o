@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Controle de Validade Nutricional</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f2f5;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    form, .actions {
+      margin-bottom: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+    }
+
+    input, button, textarea {
+      padding: 8px;
+      margin: 5px;
+      width: calc(100% - 22px);
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    input[type="search"] {
+      width: 50%;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 0 10px #ccc;
+    }
+
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    .alerta {
+      background-color: #ffe6e6;
+      color: red;
+      font-weight: bold;
+    }
+
+    .btn {
+      width: auto;
+      margin: 5px;
+    }
+
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printArea, #printArea * {
+        visibility: visible;
+      }
+      #printArea {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      #printArea th:last-child,
+      #printArea td:last-child {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Controle de Validade de Produtos Nutricionais</h1>
+
+  <form id="produtoForm">
+    <input type="text" id="codigo" placeholder="Código do Produto" required>
+    <input type="text" id="descricao" placeholder="Descrição" required>
+    <input type="text" id="localidade" placeholder="Localidade" required>
+    <input type="number" id="quantidade" placeholder="Quantidade" required>
+    <input type="date" id="validade" required>
+    <textarea id="observacao" placeholder="Observação"></textarea>
+    <button type="submit">Adicionar Produto</button>
+  </form>
+
+  <div class="actions">
+    <input type="search" id="busca" placeholder="Buscar por descrição..." oninput="filtrarProdutos()">
+    <button class="btn" onclick="exportarExcel()">Exportar Excel</button>
+    <button class="btn" onclick="gerarPDF()">Exportar PDF</button>
+    <button class="btn" onclick="imprimirRelatorio()">Imprimir Relatório</button>
+  </div>
+
+  <div id="printArea">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Descrição</th>
+          <th>Localidade</th>
+          <th>Quantidade</th>
+          <th>Validade</th>
+          <th>Dias para Vencer</th>
+          <th>Observação</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaProdutos"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const form = document.getElementById('produtoForm');
+    const tabela = document.getElementById('tabelaProdutos');
+    let produtos = JSON.parse(localStorage.getItem('produtos')) || [];
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const produto = {
+        codigo: document.getElementById('codigo').value,
+        descricao: document.getElementById('descricao').value,
+        localidade: document.getElementById('localidade').value,
+        quantidade: document.getElementById('quantidade').value,
+        validade: document.getElementById('validade').value,
+        observacao: document.getElementById('observacao').value,
+        dias: calcularDiasRestantes(document.getElementById('validade').value)
+      };
+
+      produtos.push(produto);
+      salvarProdutos();
+      renderizarTabela();
+      form.reset();
+    });
+
+    function calcularDiasRestantes(dataValidade) {
+      const hoje = new Date();
+      const validade = new Date(dataValidade);
+      const diff = validade - hoje;
+      return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    }
+
+    function renderizarTabela() {
+      tabela.innerHTML = '';
+      produtos.forEach((produto, index) => {
+        const tr = document.createElement('tr');
+        if (produto.dias <= 7) tr.classList.add('alerta');
+        tr.innerHTML = `
+          <td>${produto.codigo}</td>
+          <td>${produto.descricao}</td>
+          <td>${produto.localidade}</td>
+          <td>${produto.quantidade}</td>
+          <td>${produto.validade}</td>
+          <td>${produto.dias}</td>
+          <td>${produto.observacao}</td>
+          <td>
+            <button onclick="editarProduto(${index})">Editar</button>
+            <button onclick="removerProduto(${index})">Remover</button>
+          </td>
+        `;
+        tabela.appendChild(tr);
+      });
+    }
+
+    function salvarProdutos() {
+      localStorage.setItem('produtos', JSON.stringify(produtos));
+    }
+
+    function removerProduto(index) {
+      produtos.splice(index, 1);
+      salvarProdutos();
+      renderizarTabela();
+    }
+
+    function editarProduto(index) {
+      const p = produtos[index];
+      document.getElementById('codigo').value = p.codigo;
+      document.getElementById('descricao').value = p.descricao;
+      document.getElementById('localidade').value = p.localidade;
+      document.getElementById('quantidade').value = p.quantidade;
+      document.getElementById('validade').value = p.validade;
+      document.getElementById('observacao').value = p.observacao;
+      removerProduto(index);
+    }
+
+    function exportarExcel() {
+      const ws_data = [["Código", "Descrição", "Localidade", "Quantidade", "Validade", "Dias", "Observação"]];
+      produtos.forEach(p => {
+        ws_data.push([p.codigo, p.descricao, p.localidade, p.quantidade, p.validade, p.dias, p.observacao]);
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, "Produtos");
+      XLSX.writeFile(wb, "validade_produtos.xlsx");
+    }
+
+    function gerarPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(12);
+      doc.text("Relatório de Produtos Nutricionais", 10, 10);
+
+      let y = 20;
+      produtos.forEach((p, i) => {
+        doc.text(`(${i+1}) ${p.descricao} - Validade: ${p.validade}`, 10, y);
+        y += 10;
+      });
+
+      doc.save("relatorio_produtos.pdf");
+    }
+
+    function imprimirRelatorio() {
+      window.print();
+    }
+
+    function filtrarProdutos() {
+      const termo = document.getElementById('busca').value.toLowerCase();
+      const linhas = tabela.querySelectorAll('tr');
+      linhas.forEach(row => {
+        const descricao = row.cells[1]?.textContent.toLowerCase() || '';
+        row.style.display = descricao.includes(termo) ? '' : 'none';
+      });
+    }
+
+    renderizarTabela();
+  </script>
+</body>
+</html>
